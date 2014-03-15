@@ -1,6 +1,6 @@
 #motion detection using opencv in python
 # By: noah Caulfield
-#    November 17th, 2014
+#    November 17th, 2013
 
 import cv2.cv as cv
 import datetime,time,os
