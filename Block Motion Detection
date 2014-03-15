@@ -1,0 +1,235 @@
+#motion detection using opencv in python
+# By: noah Caulfield
+#    November 17th, 2014
+
+import cv2.cv as cv
+import datetime,time,os
+
+
+class MotionDetect:
+    """A system for detecting motion using a camera"""
+
+
+    def __init__(self):
+        """starts the monitoring system. sets up the camera, starts the timer and
+        initialises the photo counter. Also sets up a font to print the time and
+        date onto photos."""
+        self.capture = cv.CaptureFromCAM(0)
+        self.time = 0
+        self.pic_no = 1
+        #create font
+        self.font = cv.InitFont(cv.CV_FONT_HERSHEY_SIMPLEX, 1, 1, 0, 3, 8)
+
+    def save_pic(self,pic):
+        """Inputs a photo, then prints the date and time in the top left corner, and
+        then saves the resulting image."""
+        #get image and date
+        image = pic
+        date = (datetime.date.today()).timetuple()
+
+        #write time on image
+        cv.PutText(image,time.ctime(),(5,20),self.font,255)
+
+        #Put the photo in a directory whose name is the date that the photo was
+        #...taken
+        if not os.path.exists(str(date[2]) + "-" + str(date[1]) + "-" + str(date[0])):
+            os.mkdir(str(date[2]) + "-" + str(date[1]) + "-" + str(date[0]))
+
+        #The photo is given a unique number and saved in the directory. Numbers
+        #...indicate the order in which the photos were taken.
+        filename = os.path.join(str(date[2]) + "-" + str(date[1]) + "-" + str(date[0]), "intruder" +str(self.pic_no)+".jpg")
+
+        cv.SaveImage(filename,image)
+        self.pic_no += 1
+
+
+    def view_detect(self):
+        """Show video feed and turn motion detection on, if motion is detected, a
+        photo will be saved"""
+
+        cv.NamedWindow("Target", 1)
+
+        #Capture first frame to get size
+        frame = cv.QueryFrame(self.capture)
+        frame_size = cv.GetSize(frame)
+        color_image = cv.CreateImage(frame_size, 8, 3)
+        bw_image = cv.CreateImage(frame_size, cv.IPL_DEPTH_8U, 1)
+        moving_average = cv.CreateImage(frame_size, cv.IPL_DEPTH_32F, 3)
+
+        first = True
+        interval_start = time.time()
+
+        while True:
+
+
+            color_image = cv.QueryFrame(self.capture)
+            #Smooth to get rid of false positives
+            cv.Smooth(color_image, color_image, cv.CV_GAUSSIAN, 3, 0)
+
+            if first:
+                difference = cv.CloneImage(color_image)
+                temp = cv.CloneImage(color_image)
+                cv.ConvertScale(color_image, moving_average, 1.0, 0.0)
+                first = False
+            else:
+                cv.RunningAvg(color_image, moving_average, 0.020, None)
+
+            #copy moving_average to temp
+            cv.ConvertScale(moving_average, temp, 1.0, 0.0)
+
+            #Minus the current frame from the moving average
+            cv.AbsDiff(color_image, temp, difference)
+
+            #Convert the image to grayscale
+            cv.CvtColor(difference, bw_image, cv.CV_RGB2GRAY)
+
+            #convert the image to black and white
+            cv.Threshold(bw_image, bw_image, 70, 255, cv.CV_THRESH_BINARY)
+
+            #Dilate and erode to get people blobs
+            cv.Dilate(bw_image, bw_image, None, 18)
+            cv.Erode(bw_image, bw_image, None, 10)
+
+            storage = cv.CreateMemStorage(0)
+
+            #Find the countours in the binary image, put them in storage
+            contour = cv.FindContours(bw_image,storage,cv.CV_RETR_CCOMP,
+            cv.CV_CHAIN_APPROX_SIMPLE)
+
+            points = []
+
+            while contour:
+                bound_rect = cv.BoundingRect(list(contour))
+                contour = contour.h_next()
+
+                pt1 = (bound_rect[0], bound_rect[1])
+                pt2 = (bound_rect[0] + bound_rect[2], bound_rect[1] + bound_rect[3])
+                points.append(pt1)
+                points.append(pt2)
+                cv.Rectangle(color_image, pt1, pt2, cv.CV_RGB(255,0,0),1)
+
+            #if any moving objects have been identified, identify them on the frame
+            #...and take a photo
+            if len(points):
+                if time.time() - interval_start >= 30:
+                    print('Motion detected!')
+                    self.save_pic(color_image)
+                    interval_start = time.time()
+
+
+            cv.ShowImage("Target", color_image)
+
+            # Listen for ESC key
+            c = cv.WaitKey(7) % 0x100
+            if c == 27:
+                cv.DestroyAllWindows("Target")
+                break
+
+    def view(self):
+        """View the video feed with motion detection off, press the spacebar while
+        running to save a photo."""
+
+        cv.NamedWindow("Target")
+
+        while True:
+            frame = cv.QueryFrame(self.capture)
+            cv.ShowImage('Target',frame)
+            key = cv.WaitKey(10)
+            #Press 'esc' to quit program
+            if key == 27:
+                break
+            #Press spacebar to save an image
+            if key == ord(' '):
+                image = cv.QueryFrame(self.capture)
+                self.save_pic(image)
+
+    def detect(self,dur):
+
+        """Set the program to detect motion, without viewing the video feed. A
+        photo will be taken when motion is detected. Program will stop when
+        duration (dur) is reached"""
+
+        #Capture first frame to get size
+        frame = cv.QueryFrame(self.capture)
+        frame_size = cv.GetSize(frame)
+        color_image = cv.CreateImage(frame_size, 8, 3)
+        bw_image = cv.CreateImage(frame_size, cv.IPL_DEPTH_8U, 1)
+        moving_average = cv.CreateImage(frame_size, cv.IPL_DEPTH_32F, 3)
+
+        first = True
+        #interval time -creates a delay after motion has been detected
+        interval_start = time.time()
+        #start time recorded so that you can run the program for a set length of
+        #...time.
+        start_time = time.time()
+
+        while True:
+
+            if time.time() - start_time >= dur:
+                break
+
+
+            color_image = cv.QueryFrame(self.capture)
+            #Smooth to get rid of false positives
+            cv.Smooth(color_image, color_image, cv.CV_GAUSSIAN, 3, 0)
+
+            if first:
+                difference = cv.CloneImage(color_image)
+                temp = cv.CloneImage(color_image)
+                cv.ConvertScale(color_image, moving_average, 1.0, 0.0)
+                first = False
+            else:
+                cv.RunningAvg(color_image, moving_average, 0.020, None)
+
+            #Convert the scale of the moving average
+            cv.ConvertScale(moving_average, temp, 1.0, 0.0)
+
+            #Minus the current frame from the moving average
+            cv.AbsDiff(color_image, temp, difference)
+
+            #Convert the image to grayscale
+            cv.CvtColor(difference, bw_image, cv.CV_RGB2GRAY)
+
+            #convert the image to black and white
+            cv.Threshold(bw_image, bw_image, 70, 255, cv.CV_THRESH_BINARY)
+
+            #Dilate and erode to get people blobs
+            cv.Dilate(bw_image, bw_image, None, 18)
+            cv.Erode(bw_image, bw_image, None, 10)
+
+            storage = cv.CreateMemStorage(0)
+            contour = cv.FindContours(bw_image,storage,cv.CV_RETR_CCOMP,
+            cv.CV_CHAIN_APPROX_SIMPLE)
+            points = []
+
+            while contour:
+                bound_rect = cv.BoundingRect(list(contour))
+                contour = contour.h_next()
+
+                pt1 = (bound_rect[0], bound_rect[1])
+                pt2 = (bound_rect[0] + bound_rect[2], bound_rect[1] + bound_rect[3])
+                points.append(pt1)
+                points.append(pt2)
+                cv.Rectangle(color_image, pt1, pt2, cv.CV_RGB(255,0,0),1)
+
+            if len(points):
+                if time.time() - interval_start >= 30:
+                    print('Motion detected!')
+                    self.save_pic(color_image)
+                    interval_start = time.time()
+
+            # Listen for ESC key
+            c = cv.WaitKey(7)
+
+
+            if c == 27:
+                break
+
+
+if __name__ == "__main__":
+    t = MotionDetect()
+    t.view_detect()
+
+
+
+
