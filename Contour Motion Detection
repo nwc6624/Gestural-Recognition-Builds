@@ -1,6 +1,6 @@
 # name: Motion Detection Of contours.
 #Creator: Noah caulfield
-#Date  December 19th, 2014
+#Date  December 19th, 2013
 #
 #Detects the use of contors within the webcam with the use of opencv, specifically
 # cv2 as cv for legacy functions.
